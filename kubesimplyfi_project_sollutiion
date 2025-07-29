@@ -1,0 +1,20 @@
+### while creating cluster we need to specify that our storage class is this so we can create cluster and no webhook error will shown up that error is showing due to we are not able to fine where our pvc will bind with that database so we need to specify that our cluster will use this storafe class
+
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: my-postgresql
+  namespace: default
+spec:
+  instances: 3
+  storage:
+    storageClass: gp2
+    size: 1Gi
+  bootstrap:
+    initdb:
+      database: goals_database
+      owner: goals_user
+      secret:
+        name: my-postgresql-credentials
+ 
