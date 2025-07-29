@@ -1,0 +1,76 @@
+## iam taking here example of jenkins so you can use same with bit changes to any other app to uninstall
+To **completely remove Jenkins** from your server and free up port 8080 for your application, follow these steps based on your OS (assumed to be Ubuntu/Debian Linux unless you specify otherwise):
+
+---
+
+## ✅ Step-by-Step Commands to Remove Jenkins
+
+### 1. **Stop the Jenkins service**
+
+```bash
+sudo systemctl stop jenkins
+```
+
+### 2. **Disable it from starting on boot**
+
+```bash
+sudo systemctl disable jenkins
+```
+
+### 3. **Uninstall Jenkins**
+
+```bash
+sudo apt-get remove --purge jenkins -y
+```
+
+### 4. **Remove Jenkins config and leftover files**
+
+```bash
+sudo rm -rf /var/lib/jenkins
+sudo rm -rf /etc/default/jenkins
+sudo rm -rf /etc/init.d/jenkins
+sudo rm -rf /etc/systemd/system/jenkins.service
+sudo rm -rf /var/log/jenkins
+```
+
+> If you installed Jenkins via a `.war` file or manually:
+> Kill any running Jenkins process:
+
+```bash
+ps aux | grep jenkins
+```
+
+Then kill the process by PID:
+
+```bash
+sudo kill -9 <PID>
+```
+
+### 5. **Reload systemd and update**
+
+```bash
+sudo systemctl daemon-reload
+sudo apt-get autoremove -y
+sudo apt-get autoclean
+```
+
+---
+
+### ✅ Verify Jenkins is Gone:
+
+Check if anything is running on port 8080:
+
+```bash
+sudo lsof -i :8080
+```
+
+If still something shows up, note the PID and kill it:
+
+```bash
+sudo kill -9 <PID>
+```
+
+---
+
+Let me know if you're using a different OS or installed Jenkins some other way (e.g. Docker, Tomcat `.war`, etc.), and I’ll adjust accordingly.
+
