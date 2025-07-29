@@ -1,0 +1,157 @@
+#!/bin/bash
+
+set -euo pipefail
+
+#####################################
+### USER CONFIGURABLE VARIABLES ###
+#####################################
+CLUSTER_NAME="<ClusterName>"
+REGION="<Region>"
+ACCOUNT_ID="<Account ID>"
+EBS_POLICY_NAME="AmazonEKS_EBS_CSI_Driver_Policy"
+ALB_POLICY_NAME="AWSLoadBalancerControllerIAMPolicy"
+EBS_SA_NAME="ebs-csi-controller-sa"
+ALB_SA_NAME="aws-load-balancer-controller"
+NAMESPACE="kube-system"
+# VPC_ID will be automatically retrieved after the EKS cluster becomes ACTIVE
+
+#####################################
+### STEP 0: Wait for Cluster Ready ###
+#####################################
+echo "⏳ Waiting for EKS cluster '$CLUSTER_NAME' to become ACTIVE..."
+while true; do
+  STATUS=$(aws eks describe-cluster \
+    --name "$CLUSTER_NAME" \
+    --region "$REGION" \
+    --query "cluster.status" \
+    --output text 2>/dev/null || echo "NOT_FOUND")
+
+  if [ "$STATUS" == "ACTIVE" ]; then
+    echo "✅ EKS cluster is ACTIVE."
+    break
+  elif [ "$STATUS" == "NOT_FOUND" ]; then
+    echo "❌ Cluster not found. Sleeping for 30 seconds..."
+  else
+    echo "⏳ Cluster status: $STATUS. Sleeping for 30 seconds..."
+  fi
+  sleep 30
+done
+
+
+###############################################
+### STEP 0: Retrieve VPC ID Automatically ###
+###############################################
+echo "🔍 Retrieving VPC ID associated with the EKS cluster..."
+VPC_ID=$(aws eks describe-cluster \
+  --name "$CLUSTER_NAME" \
+  --region "$REGION" \
+  --query "cluster.resourcesVpcConfig.vpcId" \
+  --output text)
+echo "✅ Found VPC ID: $VPC_ID"
+
+###############################################
+### STEP 1: Update Kubeconfig for EKS Access ###
+###############################################
+echo "🔐 Updating kubeconfig for cluster access..."
+aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER_NAME"
+echo "✅ Connected to cluster: $CLUSTER_NAME"
+
+######################################
+### STEP 2: Associate OIDC Provider ###
+######################################
+echo "🔧 Associating IAM OIDC provider with the EKS cluster..."
+eksctl utils associate-iam-oidc-provider \
+  --region "$REGION" \
+  --cluster "$CLUSTER_NAME" \
+  --approve
+sleep 5
+
+############################################
+### STEP 3: Create IAM Policy for EBS CSI ###
+############################################
+echo "📦 Downloading EBS CSI IAM policy JSON..."
+curl -s -o ebs-csi-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/master/docs/example-iam-policy.json
+
+echo "🔐 Creating IAM policy for EBS CSI driver..."
+aws iam create-policy \
+  --policy-name "$EBS_POLICY_NAME" \
+  --policy-document file://ebs-csi-policy.json \
+  || echo "⚠️ Policy $EBS_POLICY_NAME already exists, skipping..."
+sleep 5
+
+##############################################################
+### STEP 4: Create IAM ServiceAccount for EBS CSI Plugin ###
+##############################################################
+echo "🔐 Creating IAM service account for EBS CSI..."
+eksctl create iamserviceaccount \
+  --cluster "$CLUSTER_NAME" \
+  --region "$REGION" \
+  --name "$EBS_SA_NAME" \
+  --namespace "$NAMESPACE" \
+  --attach-policy-arn arn:aws:iam::$ACCOUNT_ID:policy/$EBS_POLICY_NAME \
+  --approve \
+  --override-existing-serviceaccounts
+sleep 10
+
+##############################################
+### STEP 5: Install EBS CSI Driver Addon ###
+##############################################
+echo "📦 Installing EBS CSI driver addon..."
+EBS_ROLE_ARN=$(aws iam list-roles \
+  --query "Roles[?contains(RoleName, 'eksctl-$CLUSTER_NAME-addon-$EBS_SA_NAME')].Arn" \
+  --output text)
+
+eksctl create addon \
+  --name aws-ebs-csi-driver \
+  --cluster "$CLUSTER_NAME" \
+  --region "$REGION" \
+  --service-account-role-arn "$EBS_ROLE_ARN" \
+  --force
+sleep 10
+
+###############################################
+### STEP 6: Create IAM Policy for ALB ###
+###############################################
+echo "📦 Downloading ALB IAM policy JSON..."
+curl -s -o alb-iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json
+
+echo "🔐 Creating IAM policy for ALB controller..."
+aws iam create-policy \
+  --policy-name "$ALB_POLICY_NAME" \
+  --policy-document file://alb-iam-policy.json \
+  || echo "⚠️ Policy $ALB_POLICY_NAME already exists, skipping..."
+sleep 5
+
+##############################################################
+### STEP 7: Create IAM ServiceAccount for ALB Controller ###
+##############################################################
+echo "🔐 Creating IAM service account for ALB controller..."
+eksctl create iamserviceaccount \
+  --cluster "$CLUSTER_NAME" \
+  --region "$REGION" \
+  --name "$ALB_SA_NAME" \
+  --namespace "$NAMESPACE" \
+  --attach-policy-arn arn:aws:iam::$ACCOUNT_ID:policy/$ALB_POLICY_NAME \
+  --approve \
+  --override-existing-serviceaccounts
+sleep 10
+
+##########################################
+### STEP 8: Install ALB via Helm ###
+##########################################
+echo "📦 Installing AWS Load Balancer Controller via Helm..."
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+helm upgrade --install "$ALB_SA_NAME" eks/aws-load-balancer-controller \
+  -n "$NAMESPACE" \
+  --set clusterName="$CLUSTER_NAME" \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name="$ALB_SA_NAME" \
+  --set region="$REGION" \
+  --set vpcId="$VPC_ID"
+
+
+
+
+echo "✅ EKS Cluster setup complete with EBS CSI, ALB Controller
