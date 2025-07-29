@@ -15,6 +15,29 @@ ALB_SA_NAME="aws-load-balancer-controller"
 NAMESPACE="kube-system"
 # VPC_ID will be automatically retrieved after the EKS cluster becomes ACTIVE
 
+
+#############################################
+### STEP 0.0: Create EKS Cluster (if needed) ###
+#############################################
+echo "🚀 Creating EKS cluster '$CLUSTER_NAME'..."
+eksctl create cluster \
+  --name "$CLUSTER_NAME" \
+  --region "$REGION" \
+  --managed \
+  --nodes 2 \
+  --node-type t3.medium \
+  --with-oidc \
+  --ssh-access \
+  --ssh-public-key default-key \
+  --node-volume-size 20 \
+  --alb-ingress-access \
+  --verbose 4
+
+echo "⏳ Cluster creation initiated. Waiting for EKS cluster to become ACTIVE..."
+
+
+
+
 #####################################
 ### STEP 0: Wait for Cluster Ready ###
 #####################################
