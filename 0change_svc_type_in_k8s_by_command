@@ -1,0 +1,3 @@
+kubectl patch svc mysql-exporter-prometheus-mysql-exporter \
+  -n database-monitoring \
+  -p '{"spec": {"type": "NodePort"}}'
