@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fastapi-servicemonitor
+  labels:
+    release: prometheus   # यह आपके Prometheus CRD से match होना चाहिए
+spec:
+  selector:
+    matchLabels:
+      app: fastapi-app    # आपकी Service का label
+  namespaceSelector:
+    matchNames:
+      - default           # Service किस namespace में है
+  endpoints:
+  - port: http            # Service port का नाम
+    path: /metrics        # metrics endpoint
+    interval: 15s         # scrape interval
+    scheme: http
