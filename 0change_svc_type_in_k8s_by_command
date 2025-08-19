@@ -1,3 +1,17 @@
+## for clusterIP ##
+
+kubectl patch svc mysql-exporter-prometheus-mysql-exporter \
+  -n database-monitoring \
+  -p '{"spec": {"type": "ClusterIP"}}'
+
+## for LoadBalancer ##
+
+kubectl patch svc mysql-exporter-prometheus-mysql-exporter \
+  -n database-monitoring \
+  -p '{"spec": {"type": "LoadBalancer"}}'
+
+
+## for NodePort ##
 kubectl patch svc mysql-exporter-prometheus-mysql-exporter \
   -n database-monitoring \
   -p '{"spec": {"type": "NodePort"}}'
